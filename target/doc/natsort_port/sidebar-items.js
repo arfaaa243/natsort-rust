@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["main","parse_flags","print_usage"]};
