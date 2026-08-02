@@ -1,0 +1,18 @@
+[package]
+name = "natsort-rust"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A Rust port of Python's natsort (natural human sort ordering)."
+
+[lib]
+name = "natsort_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "natsort_port"
+path = "src/main.rs"
+
+# Intentionally zero dependencies for now: keeps the crate buildable offline
+# and keeps the core algorithm auditable. `clap` (CLI parsing) and `proptest`
+# (property tests) are natural additions once network/build access is available.
