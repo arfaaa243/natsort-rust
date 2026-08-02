@@ -1,0 +1,7 @@
+# PORT_MORTEM: Code Resurrection 2026 · Wave 2
+track = "D"                     # Python -> Rust
+source_url = "https://github.com/SethMMorton/natsort"
+source_language = "python"
+target_language = "rust"
+kickoff_hash = ""                # fill in: sha256 of tests/original/*.py once fetched
+notes = "Fill in kickoff_hash before code freeze; see tests/original/README.md"

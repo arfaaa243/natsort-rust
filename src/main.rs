@@ -1,4 +1,4 @@
-use natsort_core::{compare, Ns};
+use natsort_core::{compare, natsort_keygen, Ns};
 use std::cmp::Ordering;
 use std::io::{self, Read};
 
@@ -50,8 +50,11 @@ fn main() {
 
     match cmd {
         "sort" => {
+            // Use the reusable keygen + sort_by_cached_key so each line's
+            // key is parsed exactly once, not on every comparison.
+            let keygen = natsort_keygen(ns);
             let mut sorted: Vec<&str> = lines.clone();
-            sorted.sort_by(|a, b| compare(a, b, ns));
+            sorted.sort_by_cached_key(|s| keygen(s));
             for line in sorted {
                 println!("{}", line);
             }
@@ -70,6 +73,7 @@ fn main() {
                 Ordering::Equal => "=",
                 Ordering::Greater => ">",
             };
+            
             println!("{}", symbol);
         }
         other => {

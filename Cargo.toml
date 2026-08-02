@@ -13,6 +13,15 @@ path = "src/lib.rs"
 name = "natsort_port"
 path = "src/main.rs"
 
-# Intentionally zero dependencies for now: keeps the crate buildable offline
-# and keeps the core algorithm auditable. `clap` (CLI parsing) and `proptest`
-# (property tests) are natural additions once network/build access is available.
+[[bench]]
+name = "sort_benchmark"
+harness = false
+
+[dev-dependencies]
+criterion = "0.5"
+
+# The library and binary have zero runtime dependencies: keeps the crate
+# buildable offline and keeps the core algorithm auditable. `criterion` is a
+# dev-only dependency (benchmarks aren't compiled into the shipped crate).
+# `clap` (CLI parsing) and `proptest` (property tests) are natural additions
+# once network/build access is available.

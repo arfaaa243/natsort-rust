@@ -269,11 +269,6 @@ pub fn natsort_key(s: &str, ns: Ns) -> Vec<Chunk> {
     let mut chunks = Vec::new();
     let mut i = 0;
 
-
-
-
-
-
     loop {
         let start = i;
         while i < n && !is_number_start(&chars, i, ns) {
@@ -299,25 +294,79 @@ pub fn natsort_key(s: &str, ns: Ns) -> Vec<Chunk> {
 }
 
 /// Compare two strings using natural sort ordering.
+///
+/// # Performance
+/// This recomputes a full [`natsort_key`] for `a` and `b` on every call. It
+/// is the right tool for a one-off comparison (e.g. the CLI's `compare`
+/// subcommand), but **do not** use it as a sort comparator over a
+/// collection — see [`natsort_keygen`] and [`natsorted_by`] for why.
 pub fn compare(a: &str, b: &str, ns: Ns) -> Ordering {
     natsort_key(a, ns).cmp(&natsort_key(b, ns))
 }
 
-/// Sort a slice of strings using the given algorithm flags, returning a new
-/// sorted `Vec`. Input is not mutated.
-pub fn natsorted_by(items: &[String], ns: Ns) -> Vec<String> {
-    let mut sorted: Vec<String> = items.to_vec();
-    sorted.sort_by(|a, b| compare(a, b, ns));
+/// Build a reusable natural-sort key function for the given algorithm
+/// flags, mirroring Python natsort's `natsort_keygen(alg)`.
+///
+/// The returned closure is `Copy` (it only captures the `Copy` [`Ns`]
+/// flags), so it can be passed around, cloned implicitly, and called many
+/// times without any allocation of its own — the allocation happens inside
+/// each call, when it builds that item's [`Chunk`] key.
+///
+/// # Why this exists
+/// Passing this to [`slice::sort_by_cached_key`] guarantees the key is
+/// computed **exactly once per element**, regardless of how many
+/// comparisons the sort algorithm performs. Compare that to sorting with a
+/// raw comparator built on [`compare`] (or on [`natsort_key`] called inline
+/// in a `sort_by` closure): a comparison sort performs `O(n log n)`
+/// comparisons, and a naive comparator recomputes both operands' keys on
+/// *every* comparison, so the same string's key can be rebuilt `O(log n)`
+/// times over the course of one sort. With `n` items of average length
+/// `m`:
+///
+/// | Approach | Key computations | Total work |
+/// |---|---|---|
+/// | `sort_by` + inline `natsort_key` | `O(n log n)` | `O(n · m · log n)` |
+/// | `sort_by_cached_key` + `natsort_keygen` | `O(n)` | `O(n · m + n log n)` |
+///
+/// # Examples
+/// ```
+/// use natsort_core::{natsort_keygen, Ns};
+///
+/// let keygen = natsort_keygen(Ns::DEFAULT);
+/// let mut items = vec!["file10", "file2", "file1"];
+/// items.sort_by_cached_key(|s| keygen(s));
+/// assert_eq!(items, vec!["file1", "file2", "file10"]);
+/// ```
+pub fn natsort_keygen(ns: Ns) -> impl Fn(&str) -> Vec<Chunk> + Copy {
+    move |s: &str| natsort_key(s, ns)
+}
+
+/// Sort a slice of natural-sort-key-comparable items using the given
+/// algorithm flags, returning a new sorted `Vec`. Input is not mutated.
+///
+/// Generic over any `S: AsRef<str> + Clone` so it works for `String`,
+/// `&str`, `Cow<str>`, or any newtype wrapping a string, not just `String`.
+///
+/// Uses [`slice::sort_by_cached_key`] with [`natsort_keygen`] internally —
+/// each item's key is computed exactly once. See [`natsort_keygen`] for
+/// the complexity argument.
+///
+/// The sort is stable (same guarantee as Python's `sorted`): items that
+/// compare equal retain their relative input order.
+pub fn natsorted_by<S: AsRef<str> + Clone>(items: &[S], ns: Ns) -> Vec<S> {
+    let mut sorted: Vec<S> = items.to_vec();
+    let keygen = natsort_keygen(ns);
+    sorted.sort_by_cached_key(|s| keygen(s.as_ref()));
     sorted
 }
 
 /// Sort using the default (INT) algorithm.
-pub fn natsorted(items: &[String]) -> Vec<String> {
+pub fn natsorted<S: AsRef<str> + Clone>(items: &[S]) -> Vec<S> {
     natsorted_by(items, Ns::DEFAULT)
 }
 
 /// Sort using the REAL (signed float) algorithm.
-pub fn realsorted(items: &[String]) -> Vec<String> {
+pub fn realsorted<S: AsRef<str> + Clone>(items: &[S]) -> Vec<S> {
     natsorted_by(items, Ns::REAL)
 }
 
@@ -401,5 +450,68 @@ mod tests {
     fn compare_matches_natsorted_ordering() {
         assert_eq!(compare("file2", "file10", Ns::DEFAULT), Ordering::Less);
         assert_eq!(compare("file10", "file10", Ns::DEFAULT), Ordering::Equal);
+    }
+
+    // --- Additional coverage: regression guards for behavior already
+    // implemented but not previously exercised by a dedicated test. ---
+
+    #[test]
+    fn signed_flag_does_not_treat_hyphen_as_sign_without_digit() {
+        let key = natsort_key("item-", Ns::SIGNED);
+        assert_eq!(key, vec![Chunk::Text("item-".to_string())]);
+    }
+
+    #[test]
+    fn real_mode_parses_exponent_notation() {
+        let ns = Ns::REAL;
+        let input = v(&["1e3", "1e10", "1e2"]);
+        assert_eq!(natsorted_by(&input, ns), v(&["1e2", "1e3", "1e10"]));
+    }
+
+    #[test]
+    fn real_mode_rejects_dangling_exponent_sign() {
+        let key = natsort_key("1e", Ns::REAL);
+        assert_eq!(
+            key,
+            vec![
+                Chunk::Text(String::new()),
+                Chunk::Float(1.0),
+                Chunk::Text("e".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn groupletters_sorts_case_insensitively_first_then_by_case() {
+        let ns = Ns::DEFAULT.with_groupletters();
+        let input = v(&["b", "B", "a", "A"]);
+        let sorted = natsorted_by(&input, ns);
+        assert_eq!(sorted, v(&["A", "a", "B", "b"]));
+    }
+
+    #[test]
+    fn natsorted_is_stable_on_equal_keys() {
+        let ns = Ns::DEFAULT.with_ignorecase();
+        let input = v(&["Apple", "APPLE", "apple"]);
+        assert_eq!(natsorted_by(&input, ns), v(&["Apple", "APPLE", "apple"]));
+    }
+
+    #[test]
+    fn arabic_indic_digits_parse_as_numbers() {
+        let arabic_twelve = "\u{0661}\u{0662}";
+        let input = v(&[arabic_twelve, "3", "1"]);
+        assert_eq!(natsorted(&input), v(&["1", "3", arabic_twelve]));
+    }
+
+    #[test]
+    fn empty_input_slice_sorts_to_empty() {
+        let input: Vec<String> = v(&[]);
+        assert_eq!(natsorted(&input), v(&[]));
+    }
+
+    #[test]
+    fn single_item_slice_is_unchanged() {
+        let input = v(&["only"]);
+        assert_eq!(natsorted(&input), v(&["only"]));
     }
 }
