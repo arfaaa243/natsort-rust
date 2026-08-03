@@ -181,7 +181,54 @@ with no local toolchain required. Note: the `Dockerfile` only copies
 `src/`, `Cargo.toml`, and `Cargo.lock` in, so it builds the library and
 binary but not the `tests/` integration suite — that's expected, since a
 release container image has no reason to ship test code.
+## Verification
 
+This implementation was verified using differential testing against Python's `natsort`.
+
+### Verified Cases
+
+- ✅ Natural sorting of filenames (`file1`, `file2`, `file10`, `file20`)
+- ✅ Overflow handling for integers larger than Rust's `i128`
+- ✅ Rust CLI output matched Python `natsort` output for the tested inputs
+
+### Differential Testing Example
+
+Input:
+```
+file10
+file2
+file1
+file20
+file3
+```
+
+Python `natsort` output:
+```
+file1
+file2
+file3
+file10
+file20
+```
+
+Rust implementation output:
+```
+file1
+file2
+file3
+file10
+file20
+```
+
+### Overflow Test
+
+Input:
+```
+9999999999999999999999999999999999999999999
+smallfile
+```
+
+Both Python `natsort` and the Rust implementation produced the same ordering for this tested input.
 ## License
 
 MIT (same as the original natsort). The original license should be
