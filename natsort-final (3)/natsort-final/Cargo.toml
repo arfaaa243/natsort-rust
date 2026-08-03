@@ -1,0 +1,36 @@
+[package]
+name = "natsort-rust"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "A Rust port of Python's natsort (natural human sort ordering)."
+
+[lib]
+name = "natsort_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "natsort_port"
+path = "src/main.rs"
+
+[[bench]]
+name = "sort_benchmark"
+harness = false
+
+[dev-dependencies]
+criterion = "0.5"
+
+# The library and binary have zero runtime dependencies: keeps the crate
+# buildable offline and keeps the core algorithm auditable. `criterion` is a
+# dev-only dependency (benchmarks aren't compiled into the shipped crate).
+#
+# `clap` (CLI parsing) and `proptest` (property tests) were deliberately
+# NOT added in this pass, despite both being reasonable asks: the CLI
+# already covers --help/--version/file-input/exit-codes by hand (see
+# DECISIONS.md #7), and the property tests use a small hand-rolled
+# deterministic PRNG instead (see tests/property_tests.rs). Both choices
+# were made in an offline, no-toolchain environment where a new
+# crates.io dependency could not be fetched or compile-checked before
+# submission — adding one un-verified felt worse than not adding it.
+# Revisit both once network/build access is available; neither is ruled
+# out on principle.

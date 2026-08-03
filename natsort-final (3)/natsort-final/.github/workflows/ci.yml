@@ -1,0 +1,66 @@
+name: CI
+
+# Runs on every push and pull request. Mirrors exactly the four commands
+# the project's own submission checklist calls out (see the top-level
+# README's "Build and verify" section and DECISIONS.md): fmt, clippy,
+# build, and test (both debug and release profiles). This workflow was
+# written and hand-reviewed in an environment with no Rust toolchain and
+# no network access to actually run `act` or push it to GitHub and watch
+# it go green — it has not been observed running. If a step's syntax
+# turns out to be wrong, that's a real gap to fix, not a hidden one.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # Deliberately not `-D warnings`: this is the first time clippy has
+      # ever been run against this codebase (no toolchain was available
+      # while writing it — see DECISIONS.md #17), so failing the whole CI
+      # run on a lint nobody has seen yet would be a worse first
+      # impression than surfacing it as a visible warning. Tighten this to
+      # `-D warnings` once the existing code has actually been run past
+      # clippy once and any findings addressed.
+      - run: cargo clippy --all-targets --all-features
+
+  build:
+    name: cargo build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --all-targets --verbose
+
+  test:
+    name: cargo test (debug + release)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-targets --verbose
+      - run: cargo test --all-targets --release --verbose
